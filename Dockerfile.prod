@@ -1,16 +1,19 @@
 FROM python:3.10-slim
 
-# set work dir
 WORKDIR /app
 
-# install deps
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# copy code
 COPY main.py .
 
-# run FastAPI app with uvicorn
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+# install curl + supercronic
+RUN apt-get update && apt-get install -y curl wget && rm -rf /var/lib/apt/lists/* \
+    && wget -qO /usr/local/bin/supercronic https://github.com/aptible/supercronic/releases/download/v0.2.3/supercronic-linux-amd64 \
+    && chmod +x /usr/local/bin/supercronic
 
+# copy crontab
+COPY crontab /app/crontab
 
+# run uvicorn + cron together
+CMD ["sh", "-c", "uvicorn main:app --host 0.0.0.0 --port 8000 & supercronic /app/crontab"]
