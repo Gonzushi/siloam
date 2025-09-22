@@ -1,13 +1,16 @@
 FROM python:3.10-slim
 
-# install dependencies
+# set work dir
 WORKDIR /app
+
+# install deps
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# copy script
-COPY siloam.py .
+# copy code
+COPY main.py .
 
-# default command (we’ll override in scheduler)
-CMD ["python", "siloam.py"]
+# run FastAPI app with uvicorn
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+
 

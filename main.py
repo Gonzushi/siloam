@@ -1,5 +1,8 @@
+from fastapi import FastAPI
 import requests
 import datetime
+
+app = FastAPI()
 
 # === CONFIG SECTION ===
 FORM_ID = "1FAIpQLSdnRed5lP88j-_McVlF-IUmCFu1w-MFFeqU57SDVCXayNcEHg"
@@ -17,22 +20,28 @@ def submit():
     url = f"https://docs.google.com/forms/d/e/{FORM_ID}/formResponse"
     try:
         res = requests.post(url, data=payload)
-
-        # Normalize response text (ignore case)
         text = res.text.lower()
-        
+
         if "terima kasih" in text or "your response has been recorded" in text:
-            print(datetime.datetime.now(), "✅ Submission recorded")
+            return {"status": "success", "message": "✅ Submission recorded"}
         elif "formulir ini tidak menerima jawaban" in text or "form is no longer accepting responses" in text:
-            print(datetime.datetime.now(), "⛔ Form closed, submission not accepted")
+            return {"status": "closed", "message": "⛔ Form closed, submission not accepted"}
         elif "entry." in text:  
-            print(datetime.datetime.now(), "⚠️ Likely wrong field IDs (entry.xxxxx)")
+            return {"status": "warning", "message": "⚠️ Likely wrong field IDs (entry.xxxxx)"}
         else:
-            print(datetime.datetime.now(), "❓ Unknown response, check manually")
+            return {"status": "unknown", "message": "❓ Unknown response, check manually"}
 
     except Exception as e:
-        print(datetime.datetime.now(), "❌ Error:", str(e))
+        return {"status": "error", "message": str(e)}
 
 
-if __name__ == "__main__":
-    submit()
+# === ROUTES ===
+@app.get("/")
+def root():
+    return {"message": "Google Form Submitter API is running 🚀"}
+
+@app.post("/submit")
+def submit_form():
+    result = submit()
+    result["timestamp"] = datetime.datetime.now().isoformat()
+    return result
