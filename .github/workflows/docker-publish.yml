@@ -31,7 +31,7 @@ jobs:
             --build-arg BUILD_TIME=${{ env.BUILD_TIME }} \
             -t ${{ secrets.DOCKER_USERNAME }}/googleform-submitter:latest \
             -t ${{ secrets.DOCKER_USERNAME }}/googleform-submitter:${{ env.SHORT_SHA }} \
-            -f Dockerfile .
+            -f Dockerfile.prod .
 
       - name: Push Docker image
         run: |
