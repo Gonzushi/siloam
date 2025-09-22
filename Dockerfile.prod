@@ -7,9 +7,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY main.py .
 
-# install dependencies + supercronic
-RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates wget \
-    && wget -qO /usr/local/bin/supercronic https://github.com/aptible/supercronic/releases/download/v0.2.3/supercronic-linux-amd64 \
+# install curl + supercronic
+RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates \
+    && curl -fsSL -o /usr/local/bin/supercronic https://github.com/aptible/supercronic/releases/download/v0.2.3/supercronic-linux-amd64 \
     && chmod +x /usr/local/bin/supercronic \
     && rm -rf /var/lib/apt/lists/*
 
