@@ -1,0 +1,13 @@
+FROM python:3.10-slim
+
+# install dependencies
+WORKDIR /app
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# copy script
+COPY siloam.py .
+
+# default command (we’ll override in scheduler)
+CMD ["python", "siloam.py"]
+
