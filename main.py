@@ -28,9 +28,10 @@ LOOP_INTERVAL_SEC = 1  # interval between attempts in seconds
 # Ensure output dir
 os.makedirs("runs", exist_ok=True)
 
-# === GLOBAL FLAG ===
+# === GLOBAL FLAGS ===
 _loop_active = False
 _schedule_task = None
+_last_result = None  # will store last run summary
 
 
 # === MAIN FUNCTION ===
@@ -62,7 +63,7 @@ def submit():
 # === LOOP FUNCTION (used by manual + scheduled) ===
 async def run_submit_loop():
     """Run loop every LOOP_INTERVAL_SEC for up to LOOP_DURATION_MIN."""
-    global _loop_active
+    global _loop_active, _last_result
     _loop_active = True
 
     start = datetime.datetime.now()
@@ -85,6 +86,8 @@ async def run_submit_loop():
             await asyncio.sleep(LOOP_INTERVAL_SEC)
     finally:
         _loop_active = False
+        if attempts:
+            _last_result = attempts[-1]  # save last attempt result
 
     return attempts
 
@@ -99,6 +102,10 @@ def root():
 def submit_form():
     result = submit()
     result["timestamp"] = datetime.datetime.now().isoformat()
+
+    global _last_result
+    _last_result = result  # update last result for manual submit
+
     return Response(
         content=json.dumps(result, indent=4, ensure_ascii=False),
         media_type="application/json",
@@ -125,14 +132,16 @@ def deactivate_loop():
 
 @app.get("/status")
 def status_loop():
-    """Check if loop is currently active."""
-    return {"running": _loop_active}
+    """Check if loop is currently active + last run result."""
+    return {
+        "running": _loop_active,
+        "last_result": _last_result,
+    }
 
 
 # === SCHEDULER (auto-run at TARGET_HOUR:TARGET_MINUTE) ===
 async def scheduled_runner():
     """Wait until target time each day and run the loop."""
-    global _loop_active
     while True:
         now = datetime.datetime.now()
         run_time = now.replace(
