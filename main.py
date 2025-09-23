@@ -153,6 +153,7 @@ async def scheduled_runner():
             hour=TARGET_HOUR, minute=TARGET_MINUTE, second=TARGET_SECOND, microsecond=0
         )
 
+        # if already past target time today, schedule for tomorrow
         if run_time <= now:
             run_time += datetime.timedelta(days=1)
 
@@ -160,10 +161,16 @@ async def scheduled_runner():
         print(f"⏳ Waiting {wait_seconds/60:.1f} minutes until {run_time} WIB")
         await asyncio.sleep(wait_seconds)
 
-        print(f"⏰ Time reached {run_time} WIB! Running submit loop...")
-        await run_submit_loop()
-
-        print("✅ Auto-loop finished. Will wait until tomorrow...")
+        # Only run if it's Monday–Friday
+        weekday = run_time.weekday()  # 0=Mon ... 6=Sun
+        if weekday < 5:
+            print(
+                f"⏰ Time reached {run_time} WIB (Weekday {weekday})! Running submit loop..."
+            )
+            await run_submit_loop()
+            print("✅ Auto-loop finished. Will wait until tomorrow...")
+        else:
+            print(f"🚫 {run_time.strftime('%A')} (Weekend). Skipping loop.")
 
 
 @app.on_event("startup")
