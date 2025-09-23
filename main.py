@@ -5,6 +5,7 @@ import datetime
 import json
 import asyncio
 import os
+import pytz
 
 app = FastAPI()
 
@@ -20,10 +21,11 @@ payload = {
 }
 
 # === LOOP SETTINGS ===
-TARGET_HOUR = 4  # daily schedule hour
-TARGET_MINUTE = 58  # daily schedule minute
-LOOP_DURATION_MIN = 10  # loop max duration in minutes
-LOOP_INTERVAL_SEC = 1  # interval between attempts in seconds
+TARGET_HOUR = 4  # daily schedule hour (WIB)
+TARGET_MINUTE = 55
+TARGET_SECOND = 0
+LOOP_DURATION_MIN = 10
+LOOP_INTERVAL_SEC = 1
 
 # Ensure output dir
 os.makedirs("runs", exist_ok=True)
@@ -31,27 +33,25 @@ os.makedirs("runs", exist_ok=True)
 # === GLOBAL FLAGS ===
 _loop_active = False
 _schedule_task = None
-_last_result = None  # will store last run summary
+_last_result = None
+
+# === TIMEZONE (WIB) ===
+WIB = pytz.timezone("Asia/Jakarta")
 
 
 # === MAIN FUNCTION ===
 def submit():
-    """Submit once and return result dict."""
     url = f"https://docs.google.com/forms/d/e/{FORM_ID}/formResponse"
     try:
         res = requests.post(url, data=payload, timeout=30)
         text = res.text.lower()
 
-        # save raw HTML (latest only)
         with open("runs/test.html", "w", encoding="utf-8") as f:
             f.write(res.text.lower())
 
         if "informasi untuk pasien bpjs<br>" in text:
             return {"status": "success", "message": "✅ Submission recorded"}
-        elif (
-            "formulir ini tidak menerima jawaban" in text
-            or "form is no longer accepting responses" in text
-        ):
+        elif "hanya dapat diakses pada jam 05.00-07.00" in text:
             return {"status": "closed", "message": "⛔ Form closed"}
         else:
             return {"status": "fail", "message": "❌ Fail to submit, check manually"}
@@ -60,25 +60,23 @@ def submit():
         return {"status": "error", "message": str(e)}
 
 
-# === LOOP FUNCTION (used by manual + scheduled) ===
+# === LOOP FUNCTION ===
 async def run_submit_loop():
-    """Run loop every LOOP_INTERVAL_SEC for up to LOOP_DURATION_MIN."""
     global _loop_active, _last_result
     _loop_active = True
 
-    start = datetime.datetime.now()
+    start = datetime.datetime.now(WIB)
     end = start + datetime.timedelta(minutes=LOOP_DURATION_MIN)
 
     attempts = []
     try:
-        while datetime.datetime.now() < end and _loop_active:
+        while datetime.datetime.now(WIB) < end and _loop_active:
             result = await asyncio.get_running_loop().run_in_executor(None, submit)
-            result["timestamp"] = datetime.datetime.now().isoformat()
+            result["timestamp"] = datetime.datetime.now(WIB).isoformat()
             attempts.append(result)
 
-            # log to console
-            ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            print(f"[{ts}] {result.get('status').upper()}: {result.get('message')}")
+            ts = datetime.datetime.now(WIB).strftime("%Y-%m-%d %H:%M:%S")
+            print(f"[{ts} WIB] {result.get('status').upper()}: {result.get('message')}")
 
             if result.get("status") == "success":
                 break
@@ -87,7 +85,7 @@ async def run_submit_loop():
     finally:
         _loop_active = False
         if attempts:
-            _last_result = attempts[-1]  # save last attempt result
+            _last_result = attempts[-1]
 
     return attempts
 
@@ -101,11 +99,10 @@ def root():
 @app.get("/submit")
 def submit_form():
     result = submit()
-    result["timestamp"] = datetime.datetime.now().isoformat()
+    result["timestamp"] = datetime.datetime.now(WIB).isoformat()
 
     global _last_result
-    _last_result = result  # update last result for manual submit
-
+    _last_result = result
     return Response(
         content=json.dumps(result, indent=4, ensure_ascii=False),
         media_type="application/json",
@@ -114,7 +111,6 @@ def submit_form():
 
 @app.get("/submit_loop")
 async def submit_loop():
-    """Manual trigger: run loop right now."""
     attempts = await run_submit_loop()
     return Response(
         content=json.dumps(attempts, indent=4, ensure_ascii=False),
@@ -124,42 +120,47 @@ async def submit_loop():
 
 @app.get("/deactivate")
 def deactivate_loop():
-    """Manually stop the loop early."""
     global _loop_active
     _loop_active = False
-    return {"status": "deactivated"}
+    result = {
+        "status": "deactivated",
+        "timestamp": datetime.datetime.now(WIB).isoformat(),
+    }
+    return Response(
+        content=json.dumps(result, indent=4, ensure_ascii=False),
+        media_type="application/json",
+    )
 
 
 @app.get("/status")
 def status_loop():
-    """Check if loop is currently active + last run result."""
-    return {
+    result = {
         "running": _loop_active,
         "last_result": _last_result,
+        "server_time_wib": datetime.datetime.now(WIB).isoformat(),
     }
+    return Response(
+        content=json.dumps(result, indent=4, ensure_ascii=False),
+        media_type="application/json",
+    )
 
 
-# === SCHEDULER (auto-run at TARGET_HOUR:TARGET_MINUTE) ===
+# === SCHEDULER ===
 async def scheduled_runner():
-    """Wait until target time each day and run the loop."""
     while True:
-        now = datetime.datetime.now()
+        now = datetime.datetime.now(WIB)
         run_time = now.replace(
-            hour=TARGET_HOUR, minute=TARGET_MINUTE, second=0, microsecond=0
+            hour=TARGET_HOUR, minute=TARGET_MINUTE, second=TARGET_SECOND, microsecond=0
         )
 
-        # if already past target time today, schedule for tomorrow
         if run_time <= now:
             run_time += datetime.timedelta(days=1)
 
         wait_seconds = (run_time - now).total_seconds()
-        print(f"⏳ Waiting {wait_seconds/60:.1f} minutes until {run_time}")
+        print(f"⏳ Waiting {wait_seconds/60:.1f} minutes until {run_time} WIB")
         await asyncio.sleep(wait_seconds)
 
-        # run the loop
-        print(
-            f"⏰ Time reached! Running submit loop for {LOOP_DURATION_MIN} minutes..."
-        )
+        print(f"⏰ Time reached {run_time} WIB! Running submit loop...")
         await run_submit_loop()
 
         print("✅ Auto-loop finished. Will wait until tomorrow...")
@@ -167,6 +168,5 @@ async def scheduled_runner():
 
 @app.on_event("startup")
 async def start_scheduler():
-    """Start daily scheduler when FastAPI boots."""
     global _schedule_task
     _schedule_task = asyncio.create_task(scheduled_runner())
