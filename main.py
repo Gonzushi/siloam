@@ -93,7 +93,39 @@ async def run_submit_loop():
 # === ROUTES ===
 @app.get("/")
 def root():
-    return {"message": "Google Form Submitter API is running 🚀"}
+    now = datetime.datetime.now(WIB)
+    run_time = now.replace(
+        hour=TARGET_HOUR, minute=TARGET_MINUTE, second=TARGET_SECOND, microsecond=0
+    )
+
+    # if already past today's target, move to tomorrow
+    if run_time <= now:
+        run_time += datetime.timedelta(days=1)
+
+    # skip weekends (Sat=5, Sun=6)
+    while run_time.weekday() >= 5:
+        run_time += datetime.timedelta(days=1)
+
+    diff_seconds = (run_time - now).total_seconds()
+    minutes_away = diff_seconds / 60
+    hours, minutes = divmod(int(minutes_away), 60)
+
+    result = {
+        "running": _loop_active,
+        "last_result": _last_result,
+        "server_time_wib": now.isoformat(),
+        "next_schedule": {
+            "next_schedule_time_wib": run_time.isoformat(),
+            "minutes_away": round(minutes_away, 2),
+            "time_left": f"{hours}h {minutes}m",
+            "weekday": run_time.strftime("%A"),
+        },
+    }
+
+    return Response(
+        content=json.dumps(result, indent=4, ensure_ascii=False),
+        media_type="application/json",
+    )
 
 
 @app.get("/submit")
@@ -125,19 +157,6 @@ def deactivate_loop():
     result = {
         "status": "deactivated",
         "timestamp": datetime.datetime.now(WIB).isoformat(),
-    }
-    return Response(
-        content=json.dumps(result, indent=4, ensure_ascii=False),
-        media_type="application/json",
-    )
-
-
-@app.get("/status")
-def status_loop():
-    result = {
-        "running": _loop_active,
-        "last_result": _last_result,
-        "server_time_wib": datetime.datetime.now(WIB).isoformat(),
     }
     return Response(
         content=json.dumps(result, indent=4, ensure_ascii=False),
